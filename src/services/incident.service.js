@@ -1,0 +1,143 @@
+const { pool } = require('../config/db');
+const incidentCategoryRepo = require('../repositories/incidentCategory.repository');
+const incidentRepo = require('../repositories/incident.repository');
+
+const createIncident = async (userId, incidentData) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    // 1. Validate that Category exists and is active
+    const category = await incidentCategoryRepo.getCategoryById(
+      incidentData.incidentCategoryId,
+      connection
+    );
+
+    if (!category || !category.is_active) {
+      const error = new Error('Invalid or inactive incident category');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // 2. Insert incident inside transaction
+    const incidentId = await incidentRepo.createIncident(connection, {
+      ...incidentData,
+      reportedBy: userId,
+    });
+
+    // 3. Create initial status history entry (REPORTED)
+    await incidentRepo.createStatusHistory(connection, {
+      incidentId,
+      oldStatus: null,
+      newStatus: 'REPORTED',
+      changedBy: userId,
+      note: 'Incident reported by user',
+    });
+
+    await connection.commit();
+
+    return {
+      id: incidentId,
+      status: 'REPORTED',
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+const getMyIncidents = async (userId) => {
+  return await incidentRepo.getMyIncidents(userId);
+};
+
+const getIncidentDetails = async (incidentId, user) => {
+  const incident = await incidentRepo.getIncidentById(incidentId);
+
+  if (!incident) {
+    const error = new Error('Incident not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return incident;
+};
+
+const getIncidentHistory = async (incidentId, user) => {
+  const incident = await incidentRepo.getIncidentById(incidentId);
+
+  if (!incident) {
+    const error = new Error('Incident not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return await incidentRepo.getIncidentHistory(incidentId);
+};
+
+const updateIncidentStatus = async (incidentId, user, newStatus, note) => {
+  const incident = await incidentRepo.getIncidentById(incidentId);
+
+  if (!incident) {
+    const error = new Error('Incident not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const userRoles = user.roles || [];
+  const isAdmin = userRoles.includes('ADMIN');
+  const isVolunteer = userRoles.includes('VOLUNTEER');
+  const isReporter = String(incident.reportedBy) === String(user.id);
+
+  // Authorization check based on status transition
+  if (newStatus === 'CANCELLED') {
+    if (!isReporter && !isAdmin) {
+      const error = new Error('Only the reporter or an admin can cancel this incident');
+      error.statusCode = 403;
+      throw error;
+    }
+  } else if (['VERIFIED', 'REJECTED', 'DISPATCHING'].includes(newStatus)) {
+    if (!isAdmin) {
+      const error = new Error('Only administrators can moderate and dispatch incidents');
+      error.statusCode = 403;
+      throw error;
+    }
+  } else if (['RESPONDER_ASSIGNED', 'IN_PROGRESS', 'RESOLVED'].includes(newStatus)) {
+    if (!isAdmin && !isVolunteer) {
+      const error = new Error('Only volunteers or administrators can update responder status');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const result = await incidentRepo.updateIncidentStatus(
+      connection,
+      incidentId,
+      newStatus,
+      user.id,
+      note
+    );
+
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+module.exports = {
+  createIncident,
+  getMyIncidents,
+  getIncidentDetails,
+  getIncidentHistory,
+  updateIncidentStatus,
+};

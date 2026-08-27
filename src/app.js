@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
+const incidentCategoryRoutes = require('./routes/incidentCategory.routes');
+const incidentRoutes = require('./routes/incident.routes');
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -20,19 +22,21 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Manob Prohori API',
     version: '1.0.0',
-    status: 'active'
+    status: 'active',
   });
 });
 
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
 // Mount feature routes
 app.use('/api/auth', authRoutes);
+app.use('/api/incident-categories', incidentCategoryRoutes);
+app.use('/api/incidents', incidentRoutes);
 
 // Error Handling Middlewares
 app.use(notFoundHandler);
