@@ -15,6 +15,39 @@ const createIncident = async (req, res, next) => {
   }
 };
 
+const getAllIncidents = async (req, res, next) => {
+  try {
+    const { status, severity, search, page, limit } = req.query;
+    const incidents = await incidentService.getAllIncidents({
+      status,
+      severity,
+      search,
+      page,
+      limit,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: incidents,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getAdminOverviewStats = async (req, res, next) => {
+  try {
+    const stats = await incidentService.getAdminOverviewStats();
+
+    res.status(200).json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getMyIncidents = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -76,6 +109,8 @@ const updateIncidentStatus = async (req, res, next) => {
 
 module.exports = {
   createIncident,
+  getAllIncidents,
+  getAdminOverviewStats,
   getMyIncidents,
   getIncidentById,
   getIncidentHistory,

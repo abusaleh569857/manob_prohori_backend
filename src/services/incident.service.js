@@ -49,6 +49,14 @@ const createIncident = async (userId, incidentData) => {
   }
 };
 
+const getAllIncidents = async (filters) => {
+  return await incidentRepo.getAllIncidents(filters);
+};
+
+const getAdminOverviewStats = async () => {
+  return await incidentRepo.getAdminOverviewStats();
+};
+
 const getMyIncidents = async (userId) => {
   return await incidentRepo.getMyIncidents(userId);
 };
@@ -136,6 +144,8 @@ const updateIncidentStatus = async (incidentId, user, newStatus, note) => {
 
 module.exports = {
   createIncident,
+  getAllIncidents,
+  getAdminOverviewStats,
   getMyIncidents,
   getIncidentDetails,
   getIncidentHistory,

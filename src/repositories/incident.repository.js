@@ -14,6 +14,7 @@ const createIncident = async (connection, incidentData) => {
     areaName,
     district,
     upazila,
+    imageUrls,
   } = incidentData;
 
   const [result] = await connection.query(`
@@ -48,7 +49,28 @@ const createIncident = async (connection, incidentData) => {
     upazila || null,
   ]);
 
-  return result.insertId;
+  const incidentId = result.insertId;
+
+  // Save attached photos to incident_media table
+  if (imageUrls && Array.isArray(imageUrls) && imageUrls.length > 0) {
+    const mediaValues = imageUrls.map((url) => [
+      incidentId,
+      'IMAGE',
+      url,
+      reportedBy,
+    ]);
+
+    await connection.query(`
+      INSERT INTO incident_media (
+        incident_id,
+        media_type,
+        file_url,
+        uploaded_by
+      ) VALUES ?
+    `, [mediaValues]);
+  }
+
+  return incidentId;
 };
 
 const createStatusHistory = async (connection, historyData) => {
@@ -72,6 +94,147 @@ const createStatusHistory = async (connection, historyData) => {
   ]);
 
   return result.insertId;
+};
+
+const getAllIncidents = async ({ status, severity, search, limit = 50, page = 1 } = {}) => {
+  let query = `
+    SELECT 
+      i.id,
+      i.reported_by AS reportedBy,
+      i.title,
+      i.description,
+      i.severity,
+      i.status,
+      i.latitude,
+      i.longitude,
+      i.location_accuracy_meters AS locationAccuracyMeters,
+      i.address_text AS addressText,
+      i.area_name AS areaName,
+      i.district,
+      i.upazila,
+      i.incident_started_at AS incidentStartedAt,
+      i.reported_at AS reportedAt,
+      i.verified_at AS verifiedAt,
+      i.resolved_at AS resolvedAt,
+      i.created_at AS createdAt,
+      i.updated_at AS updatedAt,
+      c.id AS categoryId,
+      c.name AS categoryName,
+      c.slug AS categorySlug,
+      c.icon_name AS categoryIcon,
+      u.phone AS reporterPhone,
+      u.email AS reporterEmail,
+      p.full_name AS reporterName,
+      (
+        SELECT COUNT(*) 
+        FROM incident_volunteer_requests ivr 
+        WHERE ivr.incident_id = i.id AND ivr.response_status = 'ACCEPTED'
+      ) AS respondersDispatched
+    FROM incidents i
+    JOIN incident_categories c ON i.incident_category_id = c.id
+    JOIN users u ON i.reported_by = u.id
+    LEFT JOIN user_profiles p ON u.id = p.user_id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (status && status !== 'ALL') {
+    if (status === 'VERIFIED_ONLY') {
+      query += ` AND i.status IN ('VERIFIED', 'DISPATCHING', 'IN_PROGRESS', 'RESPONDER_ASSIGNED') AND i.status != 'REPORTED' AND i.status != 'REJECTED' AND i.status != 'CANCELLED'`;
+    } else if (status === 'DISPATCHING') {
+      query += ` AND (i.status = 'DISPATCHING' OR i.status = 'IN_PROGRESS' OR i.status = 'RESPONDER_ASSIGNED')`;
+    } else {
+      query += ` AND i.status = ?`;
+      params.push(status);
+    }
+  }
+
+  if (severity) {
+    query += ` AND i.severity = ?`;
+    params.push(severity);
+  }
+
+  if (search) {
+    query += ` AND (i.title LIKE ? OR i.address_text LIKE ? OR i.area_name LIKE ? OR p.full_name LIKE ? OR u.phone LIKE ?)`;
+    const term = `%${search}%`;
+    params.push(term, term, term, term, term);
+  }
+
+  query += ` ORDER BY i.created_at DESC LIMIT ? OFFSET ?`;
+  const offset = (Number(page) - 1) * Number(limit);
+  params.push(Number(limit), Number(offset));
+
+  const [rows] = await pool.query(query, params);
+
+  // Attach images
+  if (rows.length > 0) {
+    const incidentIds = rows.map((r) => r.id);
+    const [mediaRows] = await pool.query(
+      `SELECT incident_id AS incidentId, file_url AS fileUrl FROM incident_media WHERE incident_id IN (?)`,
+      [incidentIds]
+    );
+
+    const mediaMap = {};
+    for (const m of mediaRows) {
+      if (!mediaMap[m.incidentId]) mediaMap[m.incidentId] = [];
+      mediaMap[m.incidentId].push(m.fileUrl);
+    }
+
+    for (const r of rows) {
+      r.imageUrls = mediaMap[r.id] || [];
+    }
+  }
+
+  return rows;
+};
+
+const getAdminOverviewStats = async () => {
+  const [[counts]] = await pool.query(`
+    SELECT 
+      COUNT(*) AS totalIncidents,
+      SUM(CASE WHEN status = 'REPORTED' THEN 1 ELSE 0 END) AS pendingVerification,
+      SUM(CASE WHEN status IN ('DISPATCHING', 'IN_PROGRESS', 'RESPONDER_ASSIGNED') THEN 1 ELSE 0 END) AS activeDispatches,
+      SUM(CASE WHEN status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolvedIncidents,
+      SUM(CASE WHEN severity = 'CRITICAL' AND status != 'RESOLVED' AND status != 'REJECTED' THEN 1 ELSE 0 END) AS criticalActive
+    FROM incidents
+  `);
+
+  const [[userCounts]] = await pool.query(`
+    SELECT 
+      (SELECT COUNT(*) FROM volunteer_profiles WHERE verification_status = 'APPROVED') AS verifiedVolunteers,
+      (SELECT COUNT(*) FROM blood_donor_profiles WHERE verification_status = 'VERIFIED') AS verifiedDonors,
+      (SELECT COUNT(*) FROM hospitals) AS totalHospitals
+  `);
+
+  const [categoryBreakdown] = await pool.query(`
+    SELECT c.name AS categoryName, COUNT(i.id) AS count
+    FROM incident_categories c
+    LEFT JOIN incidents i ON c.id = i.incident_category_id
+    GROUP BY c.id, c.name
+    ORDER BY count DESC
+    LIMIT 6
+  `);
+
+  const [severityDistribution] = await pool.query(`
+    SELECT severity, COUNT(*) AS count
+    FROM incidents
+    GROUP BY severity
+  `);
+
+  return {
+    metrics: {
+      totalIncidents: Number(counts?.totalIncidents || 0),
+      pendingVerification: Number(counts?.pendingVerification || 0),
+      activeDispatches: Number(counts?.activeDispatches || 0),
+      resolvedIncidents: Number(counts?.resolvedIncidents || 0),
+      criticalActive: Number(counts?.criticalActive || 0),
+      verifiedVolunteers: Number(userCounts?.verifiedVolunteers || 0),
+      verifiedDonors: Number(userCounts?.verifiedDonors || 0),
+      totalHospitals: Number(userCounts?.totalHospitals || 0),
+    },
+    categoryBreakdown: categoryBreakdown || [],
+    severityDistribution: severityDistribution || [],
+  };
 };
 
 const getMyIncidents = async (userId) => {
@@ -139,7 +302,21 @@ const getIncidentById = async (id) => {
     LIMIT 1
   `, [id]);
 
-  return rows[0] || null;
+  if (!rows[0]) return null;
+
+  const incident = rows[0];
+
+  // Fetch attached media
+  const [mediaRows] = await pool.query(`
+    SELECT file_url AS fileUrl, media_type AS mediaType
+    FROM incident_media
+    WHERE incident_id = ?
+    ORDER BY id ASC
+  `, [id]);
+
+  incident.imageUrls = mediaRows.map((m) => m.fileUrl);
+
+  return incident;
 };
 
 const getIncidentHistory = async (incidentId) => {
@@ -208,6 +385,8 @@ const updateIncidentStatus = async (connection, incidentId, newStatus, changedBy
 module.exports = {
   createIncident,
   createStatusHistory,
+  getAllIncidents,
+  getAdminOverviewStats,
   getMyIncidents,
   getIncidentById,
   getIncidentHistory,
