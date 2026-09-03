@@ -8,8 +8,25 @@ const {
   updateIncidentStatusSchema,
 } = require('../validations/incident.validation');
 
-// Protected incident routes
+// ============================================================================
+// 1. PUBLIC ROUTES (Accessible without authentication on Home Page)
+// ============================================================================
+// Get ONLY admin-verified & dispatched emergencies for public feed
+router.get('/public/verified', (req, res, next) => {
+  req.query.status = 'VERIFIED_ONLY';
+  return incidentController.getAllIncidents(req, res, next);
+});
+
+// ============================================================================
+// 2. PROTECTED INCIDENT ROUTES (Requires Authentication)
+// ============================================================================
 router.use(verifyToken);
+
+// Admin Overview Statistics & Metrics
+router.get('/admin/overview-stats', incidentController.getAdminOverviewStats);
+
+// Get All Incidents (For Admin moderation, Triage, and Volunteer feeds)
+router.get('/', incidentController.getAllIncidents);
 
 // Create new incident
 router.post('/', validate(createIncidentSchema), incidentController.createIncident);

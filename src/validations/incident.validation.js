@@ -39,6 +39,7 @@ const createIncidentSchema = z.object({
   district: z.string().max(120).optional().nullable(),
   upazila: z.string().max(120).optional().nullable(),
   incidentStartedAt: z.string().datetime().optional().nullable().or(z.literal('')),
+  imageUrls: z.array(z.string()).optional().default([]),
 });
 
 const updateIncidentStatusSchema = z.object({
