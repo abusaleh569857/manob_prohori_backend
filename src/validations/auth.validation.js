@@ -17,9 +17,11 @@ const registerSchema = z.object({
     required_error: 'Password is required'
   }).min(6, 'Password must be at least 6 characters long').max(100, 'Password is too long'),
   
+  accountType: z.enum(['USER', 'VOLUNTEER', 'BLOOD_DONOR']).optional().default('USER'),
+  bloodGroup: z.string().optional(),
+  bloodGroupId: z.number().int().positive().optional(),
   dateOfBirth: z.string().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
-  bloodGroupId: z.number().int().positive().optional(),
   addressLine: z.string().max(255).optional(),
   district: z.string().max(120).optional(),
   upazila: z.string().max(120).optional(),

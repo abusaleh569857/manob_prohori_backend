@@ -14,9 +14,11 @@ const register = async (userData) => {
     phone,
     password,
     fullName,
+    accountType = 'USER',
+    bloodGroup,
+    bloodGroupId,
     dateOfBirth,
     gender,
-    bloodGroupId,
     addressLine,
     district,
     upazila,
@@ -52,14 +54,31 @@ const register = async (userData) => {
   try {
     await connection.beginTransaction();
 
-    // 1. Insert into users
+    // 1. Resolve blood_group_id if bloodGroup string is provided
+    let resolvedBloodGroupId = bloodGroupId || null;
+    if (!resolvedBloodGroupId && bloodGroup) {
+      const [bgRows] = await connection.query(
+        'SELECT id FROM blood_groups WHERE code = ? LIMIT 1',
+        [bloodGroup]
+      );
+      if (bgRows.length > 0) {
+        resolvedBloodGroupId = bgRows[0].id;
+      }
+    }
+
+    // Default to blood group id 1 (A+) if donor didn't specify one
+    if (accountType === 'BLOOD_DONOR' && !resolvedBloodGroupId) {
+      resolvedBloodGroupId = 7; // O+ default
+    }
+
+    // 2. Insert into users table
     const [userResult] = await connection.query(
       'INSERT INTO users (email, phone, password_hash) VALUES (?, ?, ?)',
       [email || null, phone, passwordHash]
     );
     const userId = userResult.insertId;
 
-    // 2. Insert into user_profiles
+    // 3. Insert into user_profiles
     await connection.query(
       `INSERT INTO user_profiles 
        (user_id, full_name, date_of_birth, gender, blood_group_id, address_line, district, upazila, emergency_contact_name, emergency_contact_phone, emergency_contact_relation)
@@ -69,7 +88,7 @@ const register = async (userData) => {
         fullName,
         dateOfBirth || null,
         gender || null,
-        bloodGroupId || null,
+        resolvedBloodGroupId,
         addressLine || null,
         district || null,
         upazila || null,
@@ -79,12 +98,39 @@ const register = async (userData) => {
       ]
     );
 
-    // 3. Assign default 'USER' role
-    const [roleRows] = await connection.query("SELECT id FROM roles WHERE code = 'USER' LIMIT 1");
-    if (roleRows.length > 0) {
+    // 4. Assign Roles based on accountType
+    const rolesToAssign = ['USER'];
+    if (accountType === 'VOLUNTEER') {
+      rolesToAssign.push('VOLUNTEER');
+    } else if (accountType === 'BLOOD_DONOR') {
+      rolesToAssign.push('BLOOD_DONOR');
+    }
+
+    for (const roleCode of rolesToAssign) {
+      const [roleRows] = await connection.query('SELECT id FROM roles WHERE code = ? LIMIT 1', [roleCode]);
+      if (roleRows.length > 0) {
+        await connection.query(
+          'INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)',
+          [userId, roleRows[0].id]
+        );
+      }
+    }
+
+    // 5. If Volunteer, create volunteer_profiles with verification_status = 'PENDING'
+    if (accountType === 'VOLUNTEER') {
       await connection.query(
-        'INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)',
-        [userId, roleRows[0].id]
+        `INSERT INTO volunteer_profiles (user_id, volunteer_status, verification_status, preferred_service_radius_km)
+         VALUES (?, 'UNAVAILABLE', 'PENDING', 10.00)`,
+        [userId]
+      );
+    }
+
+    // 6. If Blood Donor, create blood_donor_profiles with verification_status = 'PENDING'
+    if (accountType === 'BLOOD_DONOR') {
+      await connection.query(
+        `INSERT INTO blood_donor_profiles (user_id, blood_group_id, availability, verification_status)
+         VALUES (?, ?, 'AVAILABLE', 'PENDING')`,
+        [userId, resolvedBloodGroupId]
       );
     }
 
@@ -95,7 +141,7 @@ const register = async (userData) => {
       id: userId,
       phone,
       email: email || null,
-      roles: ['USER']
+      roles: rolesToAssign
     });
 
     return {
@@ -105,7 +151,9 @@ const register = async (userData) => {
         phone,
         email: email || null,
         fullName,
-        roles: ['USER']
+        accountType,
+        roles: rolesToAssign,
+        requiresVerification: accountType !== 'USER'
       }
     };
   } catch (err) {

@@ -7,6 +7,7 @@ const path = require('path');
 const authRoutes = require('./routes/auth.routes');
 const incidentCategoryRoutes = require('./routes/incidentCategory.routes');
 const incidentRoutes = require('./routes/incident.routes');
+const volunteerRoutes = require('./routes/volunteer.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 
@@ -44,6 +45,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/volunteers', volunteerRoutes);
 app.use('/api/uploads', uploadRoutes);
 
 // Error Handling Middlewares

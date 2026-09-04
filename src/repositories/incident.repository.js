@@ -202,7 +202,9 @@ const getAdminOverviewStats = async () => {
   const [[userCounts]] = await pool.query(`
     SELECT 
       (SELECT COUNT(*) FROM volunteer_profiles WHERE verification_status = 'APPROVED') AS verifiedVolunteers,
-      (SELECT COUNT(*) FROM blood_donor_profiles WHERE verification_status = 'VERIFIED') AS verifiedDonors,
+      (SELECT COUNT(*) FROM volunteer_profiles WHERE verification_status = 'PENDING') AS pendingVolunteers,
+      (SELECT COUNT(*) FROM blood_donor_profiles WHERE verification_status IN ('VERIFIED', 'APPROVED')) AS verifiedDonors,
+      (SELECT COUNT(*) FROM blood_donor_profiles WHERE verification_status = 'PENDING') AS pendingDonors,
       (SELECT COUNT(*) FROM hospitals) AS totalHospitals
   `);
 
@@ -210,9 +212,8 @@ const getAdminOverviewStats = async () => {
     SELECT c.name AS categoryName, COUNT(i.id) AS count
     FROM incident_categories c
     LEFT JOIN incidents i ON c.id = i.incident_category_id
-    GROUP BY c.id, c.name
-    ORDER BY count DESC
-    LIMIT 6
+    GROUP BY c.id, c.name, c.sort_order
+    ORDER BY c.sort_order ASC, c.id ASC
   `);
 
   const [severityDistribution] = await pool.query(`
@@ -229,7 +230,9 @@ const getAdminOverviewStats = async () => {
       resolvedIncidents: Number(counts?.resolvedIncidents || 0),
       criticalActive: Number(counts?.criticalActive || 0),
       verifiedVolunteers: Number(userCounts?.verifiedVolunteers || 0),
+      pendingVolunteers: Number(userCounts?.pendingVolunteers || 0),
       verifiedDonors: Number(userCounts?.verifiedDonors || 0),
+      pendingDonors: Number(userCounts?.pendingDonors || 0),
       totalHospitals: Number(userCounts?.totalHospitals || 0),
     },
     categoryBreakdown: categoryBreakdown || [],
