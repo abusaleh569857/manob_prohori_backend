@@ -6,7 +6,7 @@ const { pool } = require('../config/db');
 const getVolunteerProfile = async (userId) => {
   const [rows] = await pool.query(`
     SELECT 
-      vp.user_id AS userId,
+      u.id AS userId,
       vp.volunteer_status AS volunteerStatus,
       vp.verification_status AS verificationStatus,
       vp.preferred_service_radius_km AS serviceRadiusKm,
@@ -14,9 +14,8 @@ const getVolunteerProfile = async (userId) => {
       vp.bio,
       vp.rejection_reason AS rejectionReason,
       vp.created_at AS createdAt,
-      vl.latitude,
-      vl.longitude,
-      vl.location_updated_at AS locationUpdatedAt,
+      p.latitude,
+      p.longitude,
       p.full_name AS fullName,
       u.phone,
       u.email,
@@ -25,7 +24,6 @@ const getVolunteerProfile = async (userId) => {
     FROM users u
     JOIN user_profiles p ON u.id = p.user_id
     LEFT JOIN volunteer_profiles vp ON u.id = vp.user_id
-    LEFT JOIN volunteer_locations vl ON u.id = vl.volunteer_user_id
     WHERE u.id = ?
     LIMIT 1
   `, [userId]);
@@ -34,7 +32,7 @@ const getVolunteerProfile = async (userId) => {
   const data = rows[0];
 
   // If volunteer_profiles row doesn't exist yet, insert a default PENDING one
-  if (!data.volunteerStatus) {
+  if (!data.volunteerStatus && data.verificationStatus == null) {
     await pool.query(`
       INSERT INTO volunteer_profiles (user_id, volunteer_status, verification_status, preferred_service_radius_km)
       VALUES (?, 'UNAVAILABLE', 'PENDING', 10.00)
@@ -75,12 +73,6 @@ const updateVolunteerStatus = async (userId, status) => {
     ON DUPLICATE KEY UPDATE volunteer_status = ?
   `, [userId, status, status]);
 
-  // Record status history
-  await pool.query(`
-    INSERT INTO volunteer_status_history (volunteer_user_id, old_status, new_status, changed_by, reason)
-    VALUES (?, NULL, ?, ?, 'Volunteer updated online status')
-  `, [userId, status, userId]);
-
   return { volunteerStatus: status };
 };
 
@@ -89,27 +81,10 @@ const updateVolunteerStatus = async (userId, status) => {
  */
 const updateVolunteerLocation = async (userId, latitude, longitude) => {
   await pool.query(`
-    INSERT INTO volunteer_locations (volunteer_user_id, latitude, longitude, location_updated_at)
-    VALUES (?, ?, ?, NOW())
-    ON DUPLICATE KEY UPDATE latitude = ?, longitude = ?, location_updated_at = NOW()
-  `, [userId, latitude, longitude, latitude, longitude]);
-
-  await pool.query(`
-    UPDATE volunteer_profiles 
-    SET current_latitude = ?, current_longitude = ?, current_location_updated_at = NOW()
-    WHERE user_id = ?
-  `, [latitude, longitude, userId]);
-
-  await pool.query(`
     UPDATE user_profiles
     SET latitude = ?, longitude = ?
     WHERE user_id = ?
   `, [latitude, longitude, userId]);
-
-  await pool.query(`
-    INSERT INTO volunteer_location_history (volunteer_user_id, latitude, longitude, recorded_at)
-    VALUES (?, ?, ?, NOW())
-  `, [userId, latitude, longitude]);
 
   return { latitude, longitude };
 };
@@ -118,16 +93,13 @@ const updateVolunteerLocation = async (userId, latitude, longitude) => {
  * Get active emergency dispatches within volunteer's radius
  */
 const getNearbyDispatches = async (userId) => {
-  // 1. Get volunteer's location from volunteer_locations, volunteer_profiles, or user_profiles
+  // 1. Get volunteer's location from user_profiles
   const [locRows] = await pool.query(`
     SELECT 
-      COALESCE(vl.latitude, vp.current_latitude, up.latitude) AS latitude,
-      COALESCE(vl.longitude, vp.current_longitude, up.longitude) AS longitude
-    FROM users u
-    LEFT JOIN volunteer_locations vl ON u.id = vl.volunteer_user_id
-    LEFT JOIN volunteer_profiles vp ON u.id = vp.user_id
-    LEFT JOIN user_profiles up ON u.id = up.user_id
-    WHERE u.id = ?
+      latitude,
+      longitude
+    FROM user_profiles
+    WHERE user_id = ?
     LIMIT 1
   `, [userId]);
 
@@ -456,7 +428,7 @@ const getVolunteerVerificationApplication = async (userId) => {
 
   // Fetch documents
   const [documents] = await pool.query(`
-    SELECT id, verification_type AS verificationType, status, document_url AS documentUrl, notes, submitted_at AS submittedAt
+    SELECT id, verification_type AS verificationType, status, document_url AS documentUrl, notes, notes AS title, submitted_at AS submittedAt
     FROM volunteer_verifications
     WHERE volunteer_user_id = ?
     ORDER BY submitted_at DESC
@@ -510,10 +482,11 @@ const submitVolunteerVerificationApplication = async (userId, data) => {
     await connection.query(`DELETE FROM volunteer_verifications WHERE volunteer_user_id = ?`, [userId]);
     for (const doc of documents) {
       if (doc.documentUrl) {
+        const docTitle = doc.title || doc.notes || null;
         await connection.query(`
           INSERT INTO volunteer_verifications (volunteer_user_id, verification_type, status, document_url, notes, submitted_at)
           VALUES (?, ?, 'PENDING', ?, ?, NOW())
-        `, [userId, doc.verificationType || 'TRAINING', doc.documentUrl, doc.notes || null]);
+        `, [userId, doc.verificationType || 'TRAINING', doc.documentUrl, docTitle]);
       }
     }
 
@@ -625,39 +598,38 @@ const getAdminVolunteersList = async (filters = {}) => {
 };
 
 /**
- * Admin verify/approve/reject a volunteer
+ * Verify / Approve / Reject volunteer by Admin
  */
 const verifyVolunteerByAdmin = async (adminUserId, volunteerUserId, status, rejectionReason) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
+    // 1. Update volunteer_profiles
     await connection.query(`
       UPDATE volunteer_profiles 
       SET 
         verification_status = ?,
-        verified_by = ?,
-        verified_at = NOW(),
         rejection_reason = ?,
         volunteer_status = CASE WHEN ? = 'APPROVED' THEN 'AVAILABLE' ELSE 'UNAVAILABLE' END,
         updated_at = NOW()
       WHERE user_id = ?
-    `, [status, adminUserId, rejectionReason || null, status, volunteerUserId]);
+    `, [status, rejectionReason || null, status, volunteerUserId]);
 
-    // Update verifications table
+    // 2. Update volunteer_verifications status
     await connection.query(`
       UPDATE volunteer_verifications
-      SET status = ?, reviewed_by = ?, reviewed_at = NOW()
+      SET status = ?
       WHERE volunteer_user_id = ?
-    `, [status, adminUserId, volunteerUserId]);
+    `, [status, volunteerUserId]);
 
-    // If approved, mark volunteer skills as verified
+    // 3. If approved, mark volunteer skills as verified
     if (status === 'APPROVED') {
       await connection.query(`
         UPDATE volunteer_skills
-        SET is_verified = TRUE, verified_by = ?, verified_at = NOW()
+        SET is_verified = TRUE
         WHERE volunteer_user_id = ?
-      `, [adminUserId, volunteerUserId]);
+      `, [volunteerUserId]);
     }
 
     await connection.commit();
