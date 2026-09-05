@@ -7,19 +7,27 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 let sslConfig = undefined;
 if (process.env.DB_SSL === 'true') {
-  const certPath = process.env.DB_CA_CERT_PATH
-    ? path.resolve(__dirname, '../../', process.env.DB_CA_CERT_PATH)
-    : path.resolve(__dirname, '../certs/ca.pem');
-
-  if (fs.existsSync(certPath)) {
+  if (process.env.DB_CA_CERT) {
+    // Direct inline certificate from Environment Variable (e.g. on Render)
     sslConfig = {
       rejectUnauthorized: true,
-      ca: fs.readFileSync(certPath, 'utf-8')
+      ca: process.env.DB_CA_CERT
     };
   } else {
-    sslConfig = {
-      rejectUnauthorized: false
-    };
+    const certPath = process.env.DB_CA_CERT_PATH
+      ? path.resolve(__dirname, '../../', process.env.DB_CA_CERT_PATH)
+      : path.resolve(__dirname, '../../certs/ca.pem');
+
+    if (fs.existsSync(certPath)) {
+      sslConfig = {
+        rejectUnauthorized: true,
+        ca: fs.readFileSync(certPath, 'utf-8')
+      };
+    } else {
+      sslConfig = {
+        rejectUnauthorized: false
+      };
+    }
   }
 }
 
