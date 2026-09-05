@@ -142,6 +142,31 @@ const updateIncidentStatus = async (incidentId, user, newStatus, note) => {
   }
 };
 
+const getNearbyVolunteersForIncident = async (incidentId, radiusKm) => {
+  return await incidentRepo.getNearbyVolunteersForIncident(incidentId, radiusKm);
+};
+
+const dispatchIncidentToVolunteers = async (incidentId, volunteerUserIds, adminUserId, note) => {
+  if (!volunteerUserIds || !Array.isArray(volunteerUserIds) || volunteerUserIds.length === 0) {
+    const error = new Error('Please select at least one volunteer to dispatch.');
+    error.statusCode = 400;
+    throw error;
+  }
+  return await incidentRepo.dispatchIncidentToVolunteers(incidentId, volunteerUserIds, adminUserId, note);
+};
+
+const getIncidentDispatchedResponders = async (incidentId) => {
+  return await incidentRepo.getIncidentDispatchedResponders(incidentId);
+};
+
+const getNationalCrisisTelemetry = async () => {
+  return await incidentRepo.getNationalCrisisTelemetry();
+};
+
+const seedNationwideCrisisData = async (adminUserId) => {
+  return await incidentRepo.seedNationwideCrisisData(adminUserId);
+};
+
 module.exports = {
   createIncident,
   getAllIncidents,
@@ -150,4 +175,9 @@ module.exports = {
   getIncidentDetails,
   getIncidentHistory,
   updateIncidentStatus,
+  getNearbyVolunteersForIncident,
+  dispatchIncidentToVolunteers,
+  getIncidentDispatchedResponders,
+  getNationalCrisisTelemetry,
+  seedNationwideCrisisData,
 };

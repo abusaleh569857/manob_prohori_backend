@@ -107,6 +107,79 @@ const updateIncidentStatus = async (req, res, next) => {
   }
 };
 
+const getNearbyVolunteers = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const radius = Number(req.query.radius) || 5.0;
+
+    const data = await incidentService.getNearbyVolunteersForIncident(id, radius);
+
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const dispatchVolunteers = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { volunteerUserIds, note } = req.body;
+
+    const result = await incidentService.dispatchIncidentToVolunteers(id, volunteerUserIds, req.user.id, note);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getDispatchedResponders = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const responders = await incidentService.getIncidentDispatchedResponders(id);
+
+    res.status(200).json({
+      success: true,
+      data: responders,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getNationalCrisisTelemetry = async (req, res, next) => {
+  try {
+    const telemetry = await incidentService.getNationalCrisisTelemetry();
+    res.status(200).json({
+      success: true,
+      data: telemetry,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const seedCrisisData = async (req, res, next) => {
+  try {
+    const result = await incidentService.seedNationwideCrisisData(req.user?.id);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createIncident,
   getAllIncidents,
@@ -115,4 +188,9 @@ module.exports = {
   getIncidentById,
   getIncidentHistory,
   updateIncidentStatus,
+  getNearbyVolunteers,
+  dispatchVolunteers,
+  getDispatchedResponders,
+  getNationalCrisisTelemetry,
+  seedCrisisData,
 };

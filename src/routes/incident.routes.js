@@ -25,6 +25,10 @@ router.use(verifyToken);
 // Admin Overview Statistics & Metrics
 router.get('/admin/overview-stats', incidentController.getAdminOverviewStats);
 
+// Admin National Crisis Telemetry & GIS Heatmap
+router.get('/admin/telemetry-map', incidentController.getNationalCrisisTelemetry);
+router.post('/admin/seed-telemetry', incidentController.seedCrisisData);
+
 // Get All Incidents (For Admin moderation, Triage, and Volunteer feeds)
 router.get('/', incidentController.getAllIncidents);
 
@@ -39,6 +43,15 @@ router.get('/:id', incidentController.getIncidentById);
 
 // Get incident status history
 router.get('/:id/history', incidentController.getIncidentHistory);
+
+// Geo-spatial Volunteer Radar (Nearby verified volunteers within radius)
+router.get('/:id/nearby-volunteers', incidentController.getNearbyVolunteers);
+
+// Dispatch emergency alert to volunteers
+router.post('/:id/dispatch', incidentController.dispatchVolunteers);
+
+// Get dispatched responders status for incident
+router.get('/:id/responders', incidentController.getDispatchedResponders);
 
 // Update incident status (moderation/responder workflow)
 router.patch('/:id/status', validate(updateIncidentStatusSchema), incidentController.updateIncidentStatus);

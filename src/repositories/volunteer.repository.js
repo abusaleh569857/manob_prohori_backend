@@ -145,7 +145,9 @@ const getNearbyDispatches = async (userId) => {
     LEFT JOIN incident_volunteer_requests ivr ON i.id = ivr.incident_id AND ivr.volunteer_user_id = ?
     WHERE i.status IN ('DISPATCHING', 'IN_PROGRESS', 'RESPONDER_ASSIGNED')
       AND (ivr.response_status IS NULL OR ivr.response_status != 'DECLINED')
-    ORDER BY i.created_at DESC
+    ORDER BY 
+      CASE WHEN ivr.response_status = 'PENDING' THEN 0 ELSE 1 END,
+      i.created_at DESC
     LIMIT 20
   `, [userId]);
 
@@ -203,7 +205,7 @@ const getActiveMission = async (userId) => {
       ivr.accepted_at AS acceptedAt,
       ivr.en_route_at AS enRouteAt,
       ivr.arrived_at AS arrivedAt,
-      ivr.eta_minutes AS etaMinutes,
+      NULL AS etaMinutes,
       i.title,
       i.description,
       i.severity,
