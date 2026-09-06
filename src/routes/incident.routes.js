@@ -11,9 +11,12 @@ const {
 // ============================================================================
 // 1. PUBLIC ROUTES (Accessible without authentication on Home Page)
 // ============================================================================
-// Get ONLY admin-verified & dispatched emergencies for public feed
+// Get ONLY admin-verified & dispatched emergencies for public feed (unlimited live feed)
 router.get('/public/verified', (req, res, next) => {
   req.query.status = 'VERIFIED_ONLY';
+  if (!req.query.limit) {
+    req.query.limit = 100;
+  }
   return incidentController.getAllIncidents(req, res, next);
 });
 

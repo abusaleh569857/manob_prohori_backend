@@ -283,8 +283,8 @@ const acceptIncidentResponse = async (connection, incidentId, userId) => {
 
   // Record history
   await connection.query(`
-    INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, note)
-    VALUES (?, 'DISPATCHING', 'IN_PROGRESS', ?, 'Volunteer accepted emergency dispatch response')
+    INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, note, created_at)
+    VALUES (?, 'DISPATCHING', 'IN_PROGRESS', ?, 'Volunteer accepted emergency dispatch response', NOW())
   `, [incidentId, userId]);
 
   return { responseId: respResult.insertId, incidentId, status: 'ACCEPTED' };
@@ -310,40 +310,40 @@ const updateMissionStatus = async (connection, incidentId, userId, newStatus, no
   if (newStatus === 'EN_ROUTE') {
     await connection.query(`
       UPDATE incident_volunteer_responses 
-      SET status = 'EN_ROUTE', en_route_at = NOW(), updated_at = NOW()
+      SET status = 'EN_ROUTE', en_route_at = NOW()
       WHERE incident_id = ? AND volunteer_user_id = ?
     `, [incidentId, userId]);
   } else if (newStatus === 'ON_SCENE') {
     await connection.query(`
       UPDATE incident_volunteer_responses 
-      SET status = 'ON_SCENE', arrived_at = NOW(), updated_at = NOW()
+      SET status = 'ON_SCENE', arrived_at = NOW()
       WHERE incident_id = ? AND volunteer_user_id = ?
     `, [incidentId, userId]);
   } else if (newStatus === 'COMPLETED') {
     await connection.query(`
       UPDATE incident_volunteer_responses 
-      SET status = 'COMPLETED', completed_at = NOW(), completion_notes = ?, updated_at = NOW()
+      SET status = 'COMPLETED', completed_at = NOW()
       WHERE incident_id = ? AND volunteer_user_id = ?
-    `, [note || 'Mission completed successfully', incidentId, userId]);
+    `, [incidentId, userId]);
 
     // Update incident status to RESOLVED
     await connection.query(`
       UPDATE incidents 
-      SET status = 'RESOLVED', resolved_at = NOW(), updated_at = NOW()
+      SET status = 'RESOLVED', resolved_at = NOW(), resolved_by = ?, updated_at = NOW()
       WHERE id = ?
-    `, [incidentId]);
+    `, [userId, incidentId]);
 
     // Record history
     await connection.query(`
-      INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, note)
-      VALUES (?, 'IN_PROGRESS', 'RESOLVED', ?, ?)
+      INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, note, created_at)
+      VALUES (?, 'IN_PROGRESS', 'RESOLVED', ?, ?, NOW())
     `, [incidentId, userId, note || 'Volunteer completed rescue mission']);
   } else if (newStatus === 'CANCELLED') {
     await connection.query(`
       UPDATE incident_volunteer_responses 
-      SET status = 'CANCELLED', cancelled_at = NOW(), cancellation_reason = ?, updated_at = NOW()
+      SET status = 'CANCELLED', cancelled_at = NOW()
       WHERE incident_id = ? AND volunteer_user_id = ?
-    `, [note || 'Cancelled by responder', incidentId, userId]);
+    `, [incidentId, userId]);
   }
 
   return { status: newStatus, incidentId };

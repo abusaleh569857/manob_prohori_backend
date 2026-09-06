@@ -222,6 +222,55 @@ const getAdminOverviewStats = async () => {
     GROUP BY severity
   `);
 
+  // 24-Hour Velocity slots: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00, 23:00
+  const timeSlots = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:00"];
+  const slotMap = {
+    "00:00": { reported: 0, resolved: 0 },
+    "04:00": { reported: 0, resolved: 0 },
+    "08:00": { reported: 0, resolved: 0 },
+    "12:00": { reported: 0, resolved: 0 },
+    "16:00": { reported: 0, resolved: 0 },
+    "20:00": { reported: 0, resolved: 0 },
+    "23:00": { reported: 0, resolved: 0 },
+  };
+
+  const [recentIncidents] = await pool.query(`
+    SELECT 
+      HOUR(created_at) AS createdHour,
+      HOUR(resolved_at) AS resolvedHour,
+      status
+    FROM incidents
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+  `);
+
+  const getSlot = (hour) => {
+    const h = Number(hour);
+    if (h < 4) return "00:00";
+    if (h < 8) return "04:00";
+    if (h < 12) return "08:00";
+    if (h < 16) return "12:00";
+    if (h < 20) return "16:00";
+    if (h < 23) return "20:00";
+    return "23:00";
+  };
+
+  for (const inc of recentIncidents) {
+    if (inc.createdHour !== null && inc.createdHour !== undefined) {
+      const slot = getSlot(inc.createdHour);
+      slotMap[slot].reported += 1;
+    }
+    if (inc.status === 'RESOLVED' && inc.resolvedHour !== null && inc.resolvedHour !== undefined) {
+      const slot = getSlot(inc.resolvedHour);
+      slotMap[slot].resolved += 1;
+    }
+  }
+
+  const velocityData = timeSlots.map((time) => ({
+    time,
+    reported: slotMap[time].reported,
+    resolved: slotMap[time].resolved,
+  }));
+
   return {
     metrics: {
       totalIncidents: Number(counts?.totalIncidents || 0),
@@ -237,6 +286,7 @@ const getAdminOverviewStats = async () => {
     },
     categoryBreakdown: categoryBreakdown || [],
     severityDistribution: severityDistribution || [],
+    velocityData: velocityData || [],
   };
 };
 
@@ -566,13 +616,13 @@ const dispatchIncidentToVolunteers = async (incidentId, volunteerUserIds, adminU
 const getIncidentDispatchedResponders = async (incidentId) => {
   const [rows] = await pool.query(`
     SELECT 
-      ivr.id AS requestId,
-      ivr.volunteer_user_id AS volunteerUserId,
-      ivr.response_status AS requestStatus,
-      ivr.responded_at AS respondedAt,
+      COALESCE(ivr.id, res.id) AS requestId,
+      COALESCE(ivr.volunteer_user_id, res.volunteer_user_id) AS volunteerUserId,
+      COALESCE(ivr.response_status, 'ACCEPTED') AS requestStatus,
+      COALESCE(ivr.responded_at, res.accepted_at, NOW()) AS respondedAt,
       ivr.decline_reason AS declineReason,
       res.id AS responseId,
-      res.status AS missionStatus,
+      COALESCE(res.status, 'ACCEPTED') AS missionStatus,
       res.accepted_at AS acceptedAt,
       res.en_route_at AS enRouteAt,
       res.arrived_at AS arrivedAt,
@@ -581,14 +631,18 @@ const getIncidentDispatchedResponders = async (incidentId) => {
       u.phone AS volunteerPhone,
       u.email AS volunteerEmail,
       COALESCE(vp.volunteer_status, 'AVAILABLE') AS dutyStatus
-    FROM incident_volunteer_requests ivr
-    JOIN users u ON ivr.volunteer_user_id = u.id
+    FROM (
+      SELECT incident_id, volunteer_user_id FROM incident_volunteer_requests WHERE incident_id = ?
+      UNION
+      SELECT incident_id, volunteer_user_id FROM incident_volunteer_responses WHERE incident_id = ?
+    ) active_users
+    JOIN users u ON active_users.volunteer_user_id = u.id
     LEFT JOIN user_profiles p ON u.id = p.user_id
     LEFT JOIN volunteer_profiles vp ON u.id = vp.user_id
-    LEFT JOIN incident_volunteer_responses res ON res.incident_id = ivr.incident_id AND res.volunteer_user_id = ivr.volunteer_user_id
-    WHERE ivr.incident_id = ?
-    ORDER BY ivr.created_at DESC
-  `, [incidentId]);
+    LEFT JOIN incident_volunteer_requests ivr ON ivr.incident_id = active_users.incident_id AND ivr.volunteer_user_id = active_users.volunteer_user_id
+    LEFT JOIN incident_volunteer_responses res ON res.incident_id = active_users.incident_id AND res.volunteer_user_id = active_users.volunteer_user_id
+    ORDER BY COALESCE(res.accepted_at, ivr.responded_at) DESC
+  `, [incidentId, incidentId]);
 
   return rows;
 };
