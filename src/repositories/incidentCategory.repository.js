@@ -59,9 +59,11 @@ const getCategoryById = async (id, connection = pool) => {
     LIMIT 1
   `, [id]);
   if (!rows[0]) return null;
+  const isAct = Boolean(rows[0].isActive);
   return {
     ...rows[0],
-    isActive: Boolean(rows[0].isActive),
+    isActive: isAct,
+    is_active: isAct,
     sortOrder: Number(rows[0].sortOrder || 0),
   };
 };

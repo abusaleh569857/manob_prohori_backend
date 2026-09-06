@@ -14,7 +14,8 @@ const createIncident = async (userId, incidentData) => {
       connection
     );
 
-    if (!category || !category.is_active) {
+    const isCategoryActive = category && (category.isActive === true || category.is_active === 1 || category.is_active === true);
+    if (!category || !isCategoryActive) {
       const error = new Error('Invalid or inactive incident category');
       error.statusCode = 400;
       throw error;
