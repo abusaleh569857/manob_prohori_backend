@@ -9,6 +9,9 @@ const incidentCategoryRoutes = require('./routes/incidentCategory.routes');
 const incidentRoutes = require('./routes/incident.routes');
 const volunteerRoutes = require('./routes/volunteer.routes');
 const uploadRoutes = require('./routes/upload.routes');
+const hospitalRoutes = require('./routes/hospital.routes');
+const emergencyServiceRoutes = require('./routes/emergencyService.routes');
+const bloodRoutes = require('./routes/blood.routes');
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -47,6 +50,9 @@ app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/volunteers', volunteerRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/hospitals', hospitalRoutes);
+app.use('/api/emergency-services', emergencyServiceRoutes);
+app.use('/api/blood', bloodRoutes);
 
 // Error Handling Middlewares
 app.use(notFoundHandler);

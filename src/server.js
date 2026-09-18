@@ -3,13 +3,21 @@ dotenv.config();
 
 const app = require('./app');
 const { testConnection } = require('./config/db');
+const { initHospitalAndServicesDb } = require('./config/initHospitalAndServicesDb');
+const { initBloodDb } = require('./config/initBloodDb');
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
     // Test MySQL Database Connection
-    await testConnection();
+    const isConnected = await testConnection();
+
+    // Initialize Database tables and seeds
+    if (isConnected) {
+      await initHospitalAndServicesDb();
+      await initBloodDb();
+    }
 
     // Start Express Server
     const server = app.listen(PORT, () => {
