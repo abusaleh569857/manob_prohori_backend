@@ -168,10 +168,15 @@ const seedNationwideCrisisData = async (adminUserId) => {
   return await incidentRepo.seedNationwideCrisisData(adminUserId);
 };
 
+const getPublicPlatformStats = async () => {
+  return await incidentRepo.getPublicPlatformStats();
+};
+
 module.exports = {
   createIncident,
   getAllIncidents,
   getAdminOverviewStats,
+  getPublicPlatformStats,
   getMyIncidents,
   getIncidentDetails,
   getIncidentHistory,
@@ -182,3 +187,4 @@ module.exports = {
   getNationalCrisisTelemetry,
   seedNationwideCrisisData,
 };
+

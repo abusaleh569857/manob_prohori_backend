@@ -180,10 +180,23 @@ const seedCrisisData = async (req, res, next) => {
   }
 };
 
+const getPublicPlatformStats = async (req, res, next) => {
+  try {
+    const stats = await incidentService.getPublicPlatformStats();
+    res.status(200).json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createIncident,
   getAllIncidents,
   getAdminOverviewStats,
+  getPublicPlatformStats,
   getMyIncidents,
   getIncidentById,
   getIncidentHistory,
@@ -194,3 +207,4 @@ module.exports = {
   getNationalCrisisTelemetry,
   seedCrisisData,
 };
+
