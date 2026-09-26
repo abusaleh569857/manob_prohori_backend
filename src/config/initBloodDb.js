@@ -110,6 +110,14 @@ const initBloodDb = async () => {
       ) ENGINE=InnoDB;
     `);
 
+    // Ensure columns exist on blood_requests in case table was pre-existing
+    try {
+      await pool.query('ALTER TABLE blood_requests ADD COLUMN hospital_name VARCHAR(255) NULL AFTER hospital_id');
+    } catch (e) {}
+    try {
+      await pool.query('ALTER TABLE blood_requests ADD COLUMN contact_phone VARCHAR(50) NULL AFTER hospital_name');
+    } catch (e) {}
+
     // 2. Ensure Roles has BLOOD_DONOR
     await pool.query(`
       INSERT IGNORE INTO roles (code, name, description)

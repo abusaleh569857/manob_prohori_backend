@@ -12,6 +12,10 @@ const uploadRoutes = require('./routes/upload.routes');
 const hospitalRoutes = require('./routes/hospital.routes');
 const emergencyServiceRoutes = require('./routes/emergencyService.routes');
 const bloodRoutes = require('./routes/blood.routes');
+const reliefRoutes = require('./routes/relief.routes');
+const chatRoutes = require('./routes/chat.routes');
+const notificationRoutes = require('./routes/notification.routes');
+const adminRoutes = require('./routes/admin.routes');
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -53,6 +57,10 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/hospitals', hospitalRoutes);
 app.use('/api/emergency-services', emergencyServiceRoutes);
 app.use('/api/blood', bloodRoutes);
+app.use('/api/relief', reliefRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Error Handling Middlewares
 app.use(notFoundHandler);
