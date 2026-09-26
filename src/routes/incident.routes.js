@@ -20,6 +20,10 @@ router.get('/public/verified', (req, res, next) => {
   return incidentController.getAllIncidents(req, res, next);
 });
 
+// Get Public Platform Statistics (Volunteers, Hospitals, Blood Donors, Ambulances)
+router.get('/public/stats', incidentController.getPublicPlatformStats);
+
+
 // ============================================================================
 // 2. PROTECTED INCIDENT ROUTES (Requires Authentication)
 // ============================================================================

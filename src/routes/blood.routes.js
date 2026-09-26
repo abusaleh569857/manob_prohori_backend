@@ -8,6 +8,7 @@ const { verifyToken, authorizeRoles } = require('../middlewares/auth.middleware'
 // ==========================================
 router.get('/groups', bloodController.getBloodGroups);
 router.get('/requests', bloodController.getBloodRequests);
+router.get('/requests/public', bloodController.getBloodRequests);
 router.get('/requests/:id', bloodController.getBloodRequestById);
 router.get('/donors/search', bloodController.searchVerifiedDonors);
 

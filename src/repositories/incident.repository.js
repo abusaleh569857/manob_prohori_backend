@@ -1005,11 +1005,32 @@ const seedNationwideCrisisData = async (adminUserId) => {
   }
 };
 
+const getPublicPlatformStats = async () => {
+  const [[counts]] = await pool.query(`
+    SELECT
+      (SELECT COUNT(*) FROM volunteer_profiles WHERE verification_status = 'APPROVED') AS activeVolunteers,
+      (SELECT COUNT(*) FROM hospitals WHERE is_active = 1) AS totalHospitals,
+      (SELECT COUNT(*) FROM blood_donor_profiles WHERE verification_status = 'APPROVED') AS bloodDonors,
+      (SELECT COUNT(*) FROM emergency_service_contacts esc JOIN emergency_services es ON esc.emergency_service_id = es.id WHERE es.service_type = 'AMBULANCE' AND esc.is_active = 1) AS ambulances,
+      (SELECT COUNT(*) FROM incidents WHERE status = 'RESOLVED') AS resolvedIncidents,
+      (SELECT COUNT(*) FROM incidents) AS totalIncidents,
+      (SELECT COUNT(DISTINCT district) FROM (
+        SELECT district FROM hospitals WHERE district IS NOT NULL
+        UNION
+        SELECT district FROM incidents WHERE district IS NOT NULL
+        UNION
+        SELECT district FROM user_profiles WHERE district IS NOT NULL
+      ) d) AS districtsCovered
+  `);
+  return counts;
+};
+
 module.exports = {
   createIncident,
   createStatusHistory,
   getAllIncidents,
   getAdminOverviewStats,
+  getPublicPlatformStats,
   getMyIncidents,
   getIncidentById,
   getIncidentHistory,
@@ -1020,3 +1041,4 @@ module.exports = {
   getNationalCrisisTelemetry,
   seedNationwideCrisisData,
 };
+
