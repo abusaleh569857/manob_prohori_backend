@@ -38,14 +38,12 @@ class BloodRepository {
         bdp.longitude,
         bdp.location_updated_at,
         bdp.verification_status,
-        bdp.verified_at,
-        u.full_name,
-        u.phone_number,
+        COALESCE(up.full_name, 'Blood Donor') AS full_name,
+        u.phone AS phone_number,
         u.email,
-        up.division,
         up.district,
         up.upazila,
-        up.address_text
+        COALESCE(up.address_line, up.district, 'Bangladesh') AS address_text
       FROM blood_donor_profiles bdp
       JOIN blood_groups bg ON bdp.blood_group_id = bg.id
       JOIN users u ON bdp.user_id = u.id
@@ -193,7 +191,7 @@ class BloodRepository {
     }
 
     if (search && search.trim() !== '') {
-      whereConditions.push('(u.full_name LIKE ? OR u.phone_number LIKE ? OR up.address_text LIKE ? OR up.district LIKE ?)');
+      whereConditions.push('(up.full_name LIKE ? OR u.phone LIKE ? OR up.address_line LIKE ? OR up.district LIKE ?)');
       const searchPattern = `%${search.trim()}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
@@ -215,8 +213,8 @@ class BloodRepository {
     const query = `
       SELECT 
         bdp.user_id,
-        u.full_name AS name,
-        u.phone_number AS phone,
+        COALESCE(up.full_name, 'Blood Donor') AS name,
+        u.phone AS phone,
         u.email,
         bg.code AS blood_group,
         bg.name AS blood_group_name,
@@ -226,7 +224,7 @@ class BloodRepository {
         bdp.verified_at,
         bdp.latitude,
         bdp.longitude,
-        COALESCE(up.address_text, CONCAT_WS(', ', up.district, up.division), 'Bangladesh') AS location,
+        COALESCE(up.address_line, up.district, 'Bangladesh') AS location,
         v.id AS verification_id,
         v.verification_type,
         v.hospital_name,
@@ -377,8 +375,8 @@ class BloodRepository {
     const query = `
       SELECT 
         bdp.user_id,
-        u.full_name,
-        u.phone_number,
+        COALESCE(up.full_name, 'Blood Donor') AS full_name,
+        u.phone AS phone_number,
         bg.code AS blood_group_code,
         bdp.latitude,
         bdp.longitude,
@@ -395,6 +393,7 @@ class BloodRepository {
       FROM blood_donor_profiles bdp
       JOIN blood_groups bg ON bdp.blood_group_id = bg.id
       JOIN users u ON bdp.user_id = u.id
+      LEFT JOIN user_profiles up ON bdp.user_id = up.user_id
       WHERE bdp.verification_status = 'APPROVED'
         AND bdp.availability = 'AVAILABLE'
         AND bg.code IN (?)
@@ -491,8 +490,8 @@ class BloodRepository {
       SELECT 
         br.id,
         br.requested_by,
-        u.full_name AS requester_name,
-        COALESCE(br.contact_phone, u.phone_number) AS contact_phone,
+        COALESCE(up.full_name, 'Citizen') AS requester_name,
+        COALESCE(br.contact_phone, u.phone) AS contact_phone,
         br.incident_id,
         br.blood_group_id,
         bg.code AS blood_group_code,
@@ -513,6 +512,7 @@ class BloodRepository {
       FROM blood_requests br
       JOIN blood_groups bg ON br.blood_group_id = bg.id
       JOIN users u ON br.requested_by = u.id
+      LEFT JOIN user_profiles up ON br.requested_by = up.user_id
       LEFT JOIN hospitals h ON br.hospital_id = h.id
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
@@ -548,13 +548,14 @@ class BloodRepository {
         br.*,
         bg.code AS blood_group_code,
         bg.name AS blood_group_name,
-        u.full_name AS requester_name,
-        COALESCE(br.contact_phone, u.phone_number) AS contact_phone,
+        COALESCE(up.full_name, 'Citizen') AS requester_name,
+        COALESCE(br.contact_phone, u.phone) AS contact_phone,
         h.name AS linked_hospital_name,
         (SELECT COUNT(*) FROM blood_request_matches brm WHERE brm.blood_request_id = br.id) AS matches_count
       FROM blood_requests br
       JOIN blood_groups bg ON br.blood_group_id = bg.id
       JOIN users u ON br.requested_by = u.id
+      LEFT JOIN user_profiles up ON br.requested_by = up.user_id
       LEFT JOIN hospitals h ON br.hospital_id = h.id
       WHERE br.id = ?
     `;
@@ -600,12 +601,13 @@ class BloodRepository {
         br.status AS request_status,
         bg.code AS blood_group_code,
         COALESCE(h.name, br.hospital_name, 'Hospital') AS hospital_name,
-        u.full_name AS requester_name,
-        COALESCE(br.contact_phone, u.phone_number) AS contact_phone
+        COALESCE(up.full_name, 'Citizen') AS requester_name,
+        COALESCE(br.contact_phone, u.phone) AS contact_phone
       FROM blood_request_matches brm
       JOIN blood_requests br ON brm.blood_request_id = br.id
       JOIN blood_groups bg ON br.blood_group_id = bg.id
       JOIN users u ON br.requested_by = u.id
+      LEFT JOIN user_profiles up ON br.requested_by = up.user_id
       LEFT JOIN hospitals h ON br.hospital_id = h.id
       WHERE brm.donor_user_id = ?
       ORDER BY 
@@ -655,7 +657,7 @@ class BloodRepository {
     }
 
     if (search && search.trim() !== '') {
-      whereConditions.push('(u.full_name LIKE ? OR up.address_text LIKE ? OR up.district LIKE ?)');
+      whereConditions.push('(up.full_name LIKE ? OR up.address_line LIKE ? OR up.district LIKE ?)');
       const searchPattern = `%${search.trim()}%`;
       params.push(searchPattern, searchPattern, searchPattern);
     }
@@ -665,17 +667,16 @@ class BloodRepository {
     const query = `
       SELECT 
         bdp.user_id,
-        u.full_name AS name,
-        u.phone_number AS phone,
+        COALESCE(up.full_name, 'Blood Donor') AS name,
+        u.phone AS phone,
         bg.code AS blood_group,
         bg.name AS blood_group_name,
         bdp.availability,
         bdp.last_donation_date,
         bdp.verified_at,
-        up.division,
         up.district,
         up.upazila,
-        COALESCE(up.address_text, CONCAT_WS(', ', up.district, up.division), 'Bangladesh') AS location
+        COALESCE(up.address_line, up.district, 'Bangladesh') AS location
       FROM blood_donor_profiles bdp
       JOIN blood_groups bg ON bdp.blood_group_id = bg.id
       JOIN users u ON bdp.user_id = u.id

@@ -1,10 +1,15 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+const http = require('http');
+const { Server } = require('socket.io');
 const app = require('./app');
 const { testConnection } = require('./config/db');
 const { initHospitalAndServicesDb } = require('./config/initHospitalAndServicesDb');
 const { initBloodDb } = require('./config/initBloodDb');
+const { initReliefDb } = require('./config/initReliefDb');
+const { initChatSocket } = require('./sockets/chat.socket');
+const auditRepository = require('./repositories/audit.repository');
 
 const PORT = process.env.PORT || 5000;
 
@@ -17,11 +22,32 @@ const startServer = async () => {
     if (isConnected) {
       await initHospitalAndServicesDb();
       await initBloodDb();
+      await initReliefDb();
+      await auditRepository.seedInitialLogs();
     }
 
-    // Start Express Server
-    const server = app.listen(PORT, () => {
+    // Create HTTP Server & attach Socket.IO
+    const server = http.createServer(app);
+    const io = new Server(server, {
+      cors: {
+        origin: '*',
+        methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+        credentials: true
+      },
+      pingTimeout: 60000,
+      pingInterval: 25000
+    });
+
+    // Initialize chat socket rooms and event listeners
+    initChatSocket(io);
+
+    // Make io accessible globally if needed
+    app.set('io', io);
+
+    // Start Server
+    server.listen(PORT, () => {
       console.log(` Server is running on port ${PORT} (http://localhost:${PORT})`);
+      console.log(` WebSocket engine active with Socket.IO`);
       console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
